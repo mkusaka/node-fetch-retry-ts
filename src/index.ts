@@ -60,13 +60,31 @@ export function fetchBuilder<F extends (...args: any) => Promise<any> = typeof f
                       (!!error || !response || (frp.retryOn as number[]).includes(response.status)) &&
                       attempt < retries;
 
+        // inputをクローンする関数
+        /* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
+        function cloneInput(originalInput: Parameters<F>[0]): Parameters<F>[0] {
+            // Requestオブジェクトの場合はclone()メソッドを使用
+            if (
+                typeof originalInput === 'object' &&
+                originalInput !== null &&
+                'clone' in originalInput &&
+                typeof originalInput.clone === 'function'
+            ) {
+                return originalInput.clone() as Parameters<F>[0];
+            }
+            // 文字列やURLの場合はそのまま返す
+            return originalInput;
+        }
+        /* eslint-enable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
+
         return new Promise(function (resolve, reject): void {
-            const extendedFetch = function (attempt: number): void {
-                fetchFunc(input, init)
+            function extendedFetch(attempt: number, clonedInput: Parameters<F>[0]): void {
+                const nextClonedInput = cloneInput(clonedInput);
+                fetchFunc(clonedInput, init)
                     .then(function (response: Response): void {
                         if (retryOnFn(attempt, frp.retries, null, response)) {
                             // eslint-disable-next-line @typescript-eslint/no-use-before-define
-                            retry(attempt, null, response);
+                            retry(attempt, null, response, nextClonedInput);
                         } else {
                             resolve(response);
                         }
@@ -75,23 +93,29 @@ export function fetchBuilder<F extends (...args: any) => Promise<any> = typeof f
                         const err = error instanceof Error ? error : new Error(String(error));
                         if (retryOnFn(attempt, frp.retries, err, null)) {
                             // eslint-disable-next-line @typescript-eslint/no-use-before-define
-                            retry(attempt, err, null);
+                            retry(attempt, err, null, nextClonedInput);
                         } else {
                             reject(err);
                         }
                     });
-            };
+            }
 
-            function retry(attempt: number, error: Error | null, response: Response | null): void {
+            function retry(
+                attempt: number,
+                error: Error | null,
+                response: Response | null,
+                clonedInput: Parameters<F>[0],
+            ): void {
                 setTimeout(
-                    function (): void {
-                        extendedFetch(++attempt);
+                    () => {
+                        extendedFetch(++attempt, clonedInput);
                     },
                     retryDelayFn(attempt, error, response),
                 );
             }
 
-            extendedFetch(0);
+            // 初回実行時もクローンしたinputを使用
+            extendedFetch(0, cloneInput(input));
         }) as ReturnType<F>;
     };
 }
