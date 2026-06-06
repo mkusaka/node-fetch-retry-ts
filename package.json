@@ -51,5 +51,6 @@
   },
   "dependencies": {
     "@myrotvorets/eslint-config-myrotvorets-ts": "^3.0.1"
-  }
+  },
+  "packageManager": "pnpm@11.5.2"
 }
