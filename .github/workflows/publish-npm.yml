@@ -17,12 +17,14 @@ jobs:
       contents: read
     name: Prepare the source code
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'release' || github.event.inputs.npm == 'yes'
     steps:
       - name: Checkout source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
 
       - name: Enable Corepack
         run: corepack enable
@@ -31,7 +33,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: lts/*
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Run clean install
         run: pnpm install --frozen-lockfile
@@ -40,7 +42,7 @@ jobs:
         run: npm pack
 
       - name: Save tarball
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: package
           path: "*.tgz"
@@ -52,6 +54,7 @@ jobs:
       id-token: write
     name: Publish package
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: prepare
     strategy:
       matrix:
@@ -59,7 +62,6 @@ jobs:
           - npm
         include:
           - registry: npm
-            secret: NPM_TOKEN
             registry_url: https://registry.npmjs.org/
     steps:
       - name: Set up Node.js environment
@@ -68,15 +70,16 @@ jobs:
         with:
           node-version: lts/*
           registry-url: ${{ matrix.registry_url }}
+          package-manager-cache: false
 
       - name: Download tarball
         if: github.event_name == 'release' || github.event.inputs[matrix.registry] == 'yes'
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           name: package
 
       - name: Publish package
         if: github.event_name == 'release' || github.event.inputs[matrix.registry] == 'yes'
-        run: npm publish *.tgz
+        run: npm publish -- ./*.tgz
         env:
-          NODE_AUTH_TOKEN: ${{ secrets[matrix.secret] }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
